@@ -1,0 +1,916 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Бизнесы без сайта — поиск клиентов</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#12262B;--mute:#5B6B6E;--paper:#F2F4F1;--card:#fff;--line:#D5DBD6;--soft:#EAEFEB;
+  --acc:#0E7C6B;--acc2:#E0A21B;--err:#B3361F;--shadow:0 1px 2px rgba(18,38,43,.08),0 4px 14px rgba(18,38,43,.06);
+  --t-email:#18A058;--t-phone:#2F7DF6;--t-social:#9B51E0;--t-none:#E0A21B;
+  --side:clamp(400px,36vw,540px);
+}
+:root[data-theme=dark]{
+  --ink:#E7EEEA;--mute:#98A9A5;--paper:#101A1C;--card:#182528;--line:#2B3C3F;--soft:#203033;--shadow:0 1px 2px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+:root{--dock-h:84px}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font:14.5px/1.45 Onest,system-ui,sans-serif;color:var(--ink);background:var(--paper);display:flex;height:100vh;height:100dvh}
+aside#results{display:flex;flex-direction:column;min-height:0;width:var(--side);flex:none;border-right:1px solid var(--line);background:var(--paper);overflow:hidden;transition:margin-left .22s;z-index:1200}
+body:not(.res-open) aside#results{margin-left:calc(-1 * var(--side))}
+#stage{position:relative;flex:1;min-width:0;height:100%}
+#map{position:absolute;inset:0;background:#dfe5e1}
+#map .leaflet-top{top:64px}
+#map .leaflet-bottom{bottom:calc(var(--dock-h) + 4px)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{font-weight:500;border:1px solid var(--ink);background:var(--ink);color:var(--paper);border-radius:9px;padding:9px 14px;cursor:pointer;transition:filter .15s,transform .05s}
+button:hover:not(:disabled){filter:brightness(1.15)}
+button:active:not(:disabled){transform:translateY(1px)}
+button.sec{background:var(--acc);border-color:var(--acc);color:#fff}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+button.ghost:hover:not(:disabled){background:var(--soft);filter:none}
+button.icon{padding:6px 9px;line-height:1}
+button:disabled{opacity:.55;cursor:wait}
+input[type=text],select,textarea{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:9px 12px;min-width:0}
+:focus-visible{outline:3px solid var(--acc2);outline-offset:2px}
+
+/* верхняя панель */
+.topbar{position:absolute;z-index:1100;top:10px;left:10px;right:10px;max-width:720px;margin:0 auto;display:flex;gap:6px;align-items:center;background:var(--card);border-radius:14px;padding:6px;box-shadow:0 2px 12px rgba(0,0,0,.3)}
+.topbar:focus-within{box-shadow:0 0 0 3px var(--acc2),0 2px 12px rgba(0,0,0,.3)}
+.topbar input[type=text]{flex:1;border:0;background:transparent;padding:10px 6px;font-size:15px}
+.topbar input:focus-visible{outline:none}
+.topbar button{padding:10px 15px}
+.topbar button.ghost{border:0}
+#menu{font-size:19px;line-height:1;padding:9px 13px}
+.bar{position:absolute;left:16px;right:16px;bottom:1px;height:3px;border-radius:3px;overflow:hidden}
+.bar.on::after{content:"";display:block;height:100%;width:35%;background:var(--acc);animation:slide 1s infinite ease-in-out}
+@keyframes slide{0%{margin-left:-35%}100%{margin-left:100%}}
+#stat{position:absolute;z-index:1050;top:68px;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 130px);background:var(--card);color:var(--ink);border-radius:99px;padding:7px 14px;font-size:13px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.3)}
+#stat:empty{display:none}
+#stat.err{background:var(--err);color:#fff;font-weight:600}
+
+/* нижняя панель */
+.dock{position:absolute;z-index:1100;left:10px;right:10px;bottom:10px;max-width:720px;margin:0 auto;display:flex;gap:8px;height:calc(var(--dock-h) - 16px)}
+.dock button{border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,.35)}
+#goHere{flex:1;min-width:0;font-size:18px;font-weight:700;padding:0 16px;background:var(--acc);border-color:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;gap:10px}
+#goHere span:first-child{font-size:22px;line-height:1}
+.dock .side{background:var(--card);color:var(--ink);border:0;min-width:76px;padding:0 12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;font-weight:600}
+.dock .side b{font-size:19px;line-height:1}
+.dock .side:hover:not(:disabled){filter:none;background:var(--soft)}
+.dock [hidden]{display:none}
+
+/* меню настроек */
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1400;opacity:0;pointer-events:none;transition:opacity .2s}
+#drawer{position:fixed;top:0;bottom:0;left:0;width:min(400px,90vw);background:var(--paper);z-index:1500;transform:translateX(-102%);transition:transform .22s,box-shadow .22s;display:flex;flex-direction:column}
+body.drawer-open #drawer{transform:none;box-shadow:6px 0 28px rgba(0,0,0,.35)}
+body.drawer-open #scrim{opacity:1;pointer-events:auto}
+.dh{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.db{flex:1;overflow:auto;padding:14px 16px;display:grid;gap:16px;align-content:start}
+.df{padding:12px 16px;border-top:1px solid var(--line)}
+.db section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.db h3{margin:0 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute)}
+.db .btns{display:grid;gap:8px;margin-top:8px}
+.db .hint{margin:0;color:var(--mute);font-size:13px}
+.logo{width:34px;height:34px;border-radius:10px;background:var(--acc);color:#fff;display:grid;place-items:center;font-weight:700;font-size:18px;flex:none}
+h1{font-size:18px;line-height:1.1;margin:0;letter-spacing:-.01em;flex:1}
+h1 small{display:block;font-weight:400;color:var(--mute);font-size:12px;margin-top:3px}
+.row{display:flex;gap:8px}
+.row>input{flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 8px}
+.chips label{border:1px solid var(--line);border-radius:99px;padding:5px 12px;cursor:pointer;font-size:13.5px;background:var(--card);user-select:none}
+.chips label:has(input:checked){background:var(--acc);border-color:var(--acc);color:#fff}
+.chips input{position:absolute;opacity:0;pointer-events:none}
+.chips label:has(input:focus-visible){outline:3px solid var(--acc2)}
+.opt{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:9px 0 0;font-size:14px}
+.opt select{padding:6px 8px}
+.opt input[type=checkbox]{width:20px;height:20px}
+.link{background:none;border:0;color:var(--acc);padding:0;font-size:13px;font-weight:500;text-decoration:underline}
+
+/* панель результатов */
+.rh{display:flex;align-items:center;gap:8px;padding:10px 14px 10px 18px;border-bottom:1px solid var(--line);flex:none;position:relative}
+.rh b{flex:1;font-size:15px}
+.grab{display:none;position:absolute;top:5px;left:50%;width:40px;height:4px;margin-left:-20px;border-radius:4px;background:var(--line)}
+
+/* результаты */
+.res{flex:1;min-height:0;display:flex;flex-direction:column;border-top:1px solid var(--line);background:var(--soft)}
+.tools{padding:10px 18px 8px;display:grid;gap:8px;background:var(--paper);border-bottom:1px solid var(--line);flex:none}
+.tiers{display:flex;flex-wrap:wrap;gap:6px}
+.tier{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);border-radius:99px;padding:3px 10px 3px 8px;font-size:12.5px;cursor:pointer;user-select:none;color:var(--ink)}
+.tier i{width:11px;height:11px;border-radius:50%;background:var(--c);display:inline-block}
+.tier b{font-weight:600}
+.tier[aria-pressed=false]{opacity:.45}
+.tier[aria-pressed=false] i{background:transparent;border:2px solid var(--c)}
+.frow{display:flex;gap:6px}
+.frow input{flex:1}
+.frow select{padding:7px 8px;font-size:13px}
+.sum{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--mute)}
+#list{flex:1;overflow:auto;padding:12px 18px;display:grid;gap:10px;align-content:start}
+.empty{color:var(--mute);padding:28px 8px;text-align:center}
+.empty big{display:block;font-size:34px;margin-bottom:6px}
+
+.lead{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--c);border-radius:11px;padding:11px 13px;box-shadow:var(--shadow);cursor:pointer;display:grid;gap:5px;transition:box-shadow .15s,border-color .15s}
+.lead:hover{box-shadow:0 2px 4px rgba(18,38,43,.12),0 8px 20px rgba(18,38,43,.1)}
+.lead.active{outline:2px solid var(--c);outline-offset:1px}
+.lead.t-email{--c:var(--t-email)}.lead.t-phone{--c:var(--t-phone)}.lead.t-social{--c:var(--t-social)}.lead.t-none{--c:var(--t-none)}
+.lead.dead{opacity:.5}
+.lh{display:flex;align-items:flex-start;gap:8px}
+.lh b{flex:1;font-size:15.5px;line-height:1.25}
+.badge{font-size:11px;font-weight:600;border-radius:99px;padding:2px 8px;background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c);white-space:nowrap;border:1px solid color-mix(in srgb,var(--c) 40%,transparent)}
+:root[data-theme=dark] .badge{color:#fff}
+.star{background:none;border:0;color:var(--mute);padding:0 2px;font-size:19px;line-height:1}
+.star.on{color:var(--acc2)}
+.sub{color:var(--mute);font-size:12.5px}
+.addr{font-size:13.5px}
+.ct{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:3px 8px;font-size:13px;color:var(--ink);text-decoration:none;max-width:100%}
+.pill:hover{border-color:var(--acc)}
+.pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill.cp{padding:3px 6px;cursor:pointer;color:var(--mute)}
+.pill.cta{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.acts{display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap}
+.acts a{color:var(--acc);font-weight:500;font-size:13px}
+.acts select{padding:3px 6px;font-size:12.5px;margin-left:auto}
+.note{width:100%;min-height:54px;font-size:13px;resize:vertical}
+.st-новый{--sc:#E0A21B}.st-написал{--sc:#5B6B6E}.st-ответил{--sc:#FF7A00}.st-клиент{--sc:#0E7C6B}.st-не-интересно{--sc:#999}
+.acts select{border-color:var(--sc,var(--line));font-weight:500}
+
+footer{padding:10px 18px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--paper);flex:none}
+footer small{color:var(--mute);font-size:11.5px;flex-basis:100%}
+
+/* карта */
+.legend,.mapbtn{background:var(--card);color:var(--ink);border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.legend{padding:10px 12px;font-size:12.5px;min-width:200px}
+.legend.closed{min-width:0;padding:0;background:transparent;box-shadow:none}
+.lg-toggle{display:block;margin:0 0 6px auto;border:0;border-radius:99px;padding:6px 12px;font-size:12.5px;font-weight:600;background:var(--card);color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.legend.closed .lg-toggle{margin:0}
+.legend h4{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute)}
+.legend label{display:flex;align-items:center;gap:8px;margin:3px 0;cursor:pointer}
+.legend label i{width:14px;height:14px;border-radius:50%;background:var(--c);border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+.legend hr{border:0;border-top:1px solid var(--line);margin:8px 0}
+.legend .ring{display:flex;gap:10px;flex-wrap:wrap;color:var(--mute)}
+.legend .ring span{display:inline-flex;align-items:center;gap:4px}
+.legend .ring i{width:12px;height:12px;border-radius:50%;background:#bbb;border:3px solid var(--rc)}
+.mapbtn{border:0;padding:9px 14px;font-weight:600;color:var(--ink)}
+.mapbtn:hover{filter:none;background:var(--soft)}
+.cl{background:#12262B;color:#fff;border:3px solid #fff;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.pop b{font-size:14.5px}.pop div{margin-top:3px}.pop a{color:#0E7C6B;font-weight:500;margin-right:8px}
+.leaflet-popup-content{margin:12px 14px}
+#toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,20px);background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:99px;opacity:0;pointer-events:none;transition:.25s;z-index:2000;font-weight:500}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);padding:20px;width:min(560px,92vw)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog h3{margin:0 0 4px}
+dialog p{margin:0 0 12px;color:var(--mute);font-size:13px}
+dialog label{display:block;font-weight:500;font-size:13px;margin:10px 0 4px}
+dialog input,dialog textarea{width:100%}
+dialog textarea{min-height:190px;resize:vertical}
+dialog .row{justify-content:flex-end;margin-top:14px}
+
+body #toast{bottom:calc(var(--dock-h) + 14px);transition:opacity .25s,transform .4s var(--spring)}
+#goLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* анимации */
+:root{--spring:cubic-bezier(.2,.9,.3,1.25);--ease:cubic-bezier(.22,.8,.3,1)}
+@keyframes up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes down{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
+@keyframes pop{from{opacity:0;transform:translateX(-50%) scale(.85)}to{opacity:1;transform:translateX(-50%) scale(1)}}
+@keyframes ptIn{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}
+@keyframes flame{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
+@keyframes shimmer{to{background-position:-200% 0}}
+@keyframes bump{40%{transform:scale(1.4)}}
+@keyframes sectIn{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:none}}
+.topbar{animation:down .5s var(--ease) both}
+.dock{animation:up .5s var(--ease) .1s both}
+#stat{animation:pop .3s var(--spring) both}
+.lead{transition:box-shadow .2s,transform .2s var(--ease),border-color .2s,opacity .2s}
+.lead:hover{transform:translateY(-2px)}
+.lead:active{transform:scale(.99)}
+.lead.enter{animation:up .45s var(--ease) backwards;animation-delay:calc(var(--i) * 45ms)}
+.heat{font-size:12px;letter-spacing:-2px;white-space:nowrap;align-self:center}
+.heat.h3{animation:flame 1.3s ease-in-out infinite}
+path.pt.enter{transform-box:fill-box;transform-origin:center;animation:ptIn .5s var(--spring) backwards}
+.dock button{transition:transform .18s var(--spring),box-shadow .2s,background .2s,filter .15s}
+.dock button:hover:not(:disabled){transform:translateY(-2px)}
+.dock button:active:not(:disabled){transform:scale(.96)}
+.dock .side.cancel{background:var(--err);color:#fff;animation:up .3s var(--spring) backwards}
+.dock .side.cancel:hover:not(:disabled){background:var(--err);filter:brightness(1.12)}
+body.busy #goHere{background:linear-gradient(110deg,var(--acc) 30%,#22bfa5 50%,var(--acc) 70%) 0 0/200% 100%;animation:shimmer 1.2s linear infinite}
+body.busy #goHere:disabled{opacity:1;cursor:progress}
+#resCount.bump{animation:bump .45s var(--spring)}
+body.drawer-open .db>*{animation:sectIn .45s var(--ease) backwards}
+body.drawer-open .db>:nth-child(2){animation-delay:.06s}
+body.drawer-open .db>:nth-child(3){animation-delay:.12s}
+body.drawer-open .db>:nth-child(4){animation-delay:.18s}
+#drawer{transition:transform .35s var(--ease),box-shadow .3s}
+aside#results{transition:margin-left .32s var(--ease),transform .35s var(--ease)}
+button,.chips label,.tier,.pill{transition:transform .15s var(--spring),background .2s,color .2s,border-color .2s,opacity .2s,filter .15s}
+.chips label:active,.tier:active,.pill:active{transform:scale(.94)}
+.tier i{transition:background .2s}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+@media(max-width:820px){
+  aside#results{position:fixed;left:0;right:0;bottom:var(--dock-h);width:auto;height:78vh;height:78dvh;border-right:0;border-radius:18px 18px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.35);margin-left:0!important;transform:translateY(calc(100% + var(--dock-h) + 20px));transition:transform .22s}
+  body.res-open aside#results{transform:none}
+  .grab{display:block}
+  .rh{padding-top:16px}
+  .tools{padding:8px 14px 6px}
+  #list{padding:10px 14px}
+  footer{padding:8px 14px;flex-wrap:nowrap;overflow-x:auto}
+  footer button{flex:none;padding:8px 12px;font-size:13px}
+  .tiers{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .tier{flex:none;font-size:12px;padding:3px 9px 3px 7px}
+  .tools{gap:6px}
+  .frow select{flex:1}
+  footer small{display:none}
+  .legend{min-width:0;max-width:calc(100vw - 80px);font-size:12px;padding:8px 10px}
+  .legend .ring{display:none}
+  .legend hr,.legend h4:last-of-type{display:none}
+  .mapbtn{padding:7px 10px;font-size:13px}
+  .topbar button#go{padding:10px 12px}
+  #goHere{font-size:16px}
+}
+</style>
+</head>
+<body>
+<aside id="results" aria-label="Результаты">
+  <div class="rh"><span class="grab"></span><b>Результаты</b><button class="ghost icon" id="resClose" aria-label="Свернуть список">✕</button></div>
+  <section class="res">
+    <div class="tools">
+      <div class="tiers" id="tiers"></div>
+      <div class="frow">
+        <input type="text" id="flt" placeholder="Поиск по названию, адресу, типу" aria-label="Фильтр результатов">
+      </div>
+      <div class="frow">
+        <select id="sort" aria-label="Сортировка">
+          <option value="score">🔥 Сначала самые вкусные</option>
+          <option value="dist">Ближе к центру карты</option>
+          <option value="name">По названию</option>
+          <option value="status">По статусу</option>
+        </select>
+        <select id="stf" aria-label="Фильтр по статусу"></select>
+        <button class="ghost icon" id="favOnly" title="Только избранное" aria-pressed="false">★</button>
+      </div>
+      <div class="sum"><span id="count"></span><span id="funnel"></span></div>
+    </div>
+    <div id="list"><div class="empty"><big>🗺️</big>Введите место сверху или нажмите «Искать в этой местности» внизу.</div></div>
+  </section>
+  <footer>
+    <button id="csv" class="ghost">⬇ CSV</button>
+    <button id="cpEmails" class="ghost" title="Скопировать все email">⧉ Email</button>
+    <button id="cpPhones" class="ghost" title="Скопировать все телефоны">⧉ Телефоны</button>
+    <small>OSM может не знать о сайте — проверяйте по ссылке «Google» перед письмом.</small>
+  </footer>
+</aside>
+
+<div id="stage">
+  <main id="map" aria-label="Карта"></main>
+  <div class="topbar">
+    <button class="ghost icon" id="menu" aria-label="Настройки поиска" aria-expanded="false">☰</button>
+    <input type="text" id="q" placeholder="Город, штат или страна: Austin, Texas" aria-label="Место" autocomplete="off" enterkeyhint="search">
+    <button class="sec" id="go">Найти</button>
+    <div class="bar" id="bar"></div>
+  </div>
+  <div id="stat" role="status" aria-live="polite"></div>
+  <div class="dock">
+    <button class="side" id="resBtn" type="button" aria-label="Список результатов"><b id="resCount">0</b>Список</button>
+    <button id="goHere" type="button"><span aria-hidden="true">⌕</span><span id="goLabel">Искать в этой местности</span></button>
+    <button class="side" id="zoneClr" type="button" hidden aria-label="Убрать зону"><b>✕</b>Зона</button>
+    <button class="side cancel" id="cancel" type="button" hidden aria-label="Отменить поиск"><b>✕</b>Отмена</button>
+  </div>
+</div>
+
+<div id="scrim"></div>
+<nav id="drawer" aria-label="Настройки поиска" inert>
+  <div class="dh">
+    <div class="logo">⌖</div>
+    <h1>Бизнесы без сайта<small>Данные: OpenStreetMap</small></h1>
+    <button class="ghost icon" id="menuClose" aria-label="Закрыть меню">✕</button>
+  </div>
+  <div class="db">
+    <section>
+      <h3>Что искать</h3>
+      <div class="chips" id="cats"></div>
+      <div><button class="link" id="catAll">выбрать все</button> · <button class="link" id="catNone">очистить</button></div>
+    </section>
+    <section>
+      <h3>Фильтры</h3>
+      <label class="opt">Контакты в OSM
+        <select id="contact">
+          <option value="reach" selected>Телефон или email</option>
+          <option value="email">Только с email</option>
+          <option value="any">Любые (и без контактов)</option>
+        </select>
+      </label>
+      <label class="opt"><span>Скрыть тех, у кого есть соцсети</span><input type="checkbox" id="noSocial"></label>
+      <label class="opt">Максимум результатов
+        <select id="limit"><option>100</option><option selected>300</option><option>600</option><option>1000</option></select>
+      </label>
+    </section>
+    <section>
+      <h3>Прочее</h3>
+      <div class="btns">
+        <button class="ghost" id="tpl">✉ Шаблон письма</button>
+        <button class="ghost" id="theme">◐ Светлая / тёмная тема</button>
+        <button class="ghost" id="clr">Сбросить зону и результаты</button>
+      </div>
+    </section>
+    <p class="hint">Совет: нарисуйте зону инструментами слева на карте (многоугольник или прямоугольник) — тогда нижняя кнопка будет искать только в ней.</p>
+  </div>
+  <div class="df"><button class="sec" id="menuDone" style="width:100%">Готово</button></div>
+</nav>
+<div id="toast"></div>
+
+<dialog id="tplDlg">
+  <h3>Шаблон письма</h3>
+  <p>Кнопка «Написать» на карточке откроет почтовый клиент с этим текстом. Подстановки: {name}, {category}, {city}.</p>
+  <label for="tSub">Тема</label><input type="text" id="tSub">
+  <label for="tBody">Текст</label><textarea id="tBody"></textarea>
+  <div class="row"><button class="ghost" id="tReset">По умолчанию</button><button id="tSave">Сохранить</button></div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const h = (tag, a = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(a)) {
+    if (v === false || v == null) continue;
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? '' : v);
+  }
+  n.append(...kids.flat().filter(x => x !== null && x !== undefined && x !== false && x !== ''));
+  return n;
+};
+
+// ---------- конфиг ----------
+// Категории: [ключ OSM, regex значений]. Добавляйте свои сюда.
+const CATS = {
+  food:    { l: 'Еда',      f: [['amenity', 'restaurant|cafe|bar|pub|fast_food|ice_cream'], ['shop', 'bakery|pastry|confectionery']] },
+  beauty:  { l: 'Красота',  f: [['shop', 'hairdresser|beauty|cosmetics|massage|tattoo']] },
+  auto:    { l: 'Авто',     f: [['shop', 'car|car_repair|car_parts|tyres'], ['amenity', 'car_wash']] },
+  health:  { l: 'Здоровье', f: [['amenity', 'dentist|clinic|doctors|veterinary']] },
+  fitness: { l: 'Спорт',    f: [['leisure', 'fitness_centre|sports_centre|dance']] },
+  retail:  { l: 'Магазины', f: [['shop', 'clothes|shoes|florist|gift|jewelry|furniture|books|pet|bicycle|hardware|interior_decoration']] },
+  craft:   { l: 'Ремесло',  f: [['craft', '.+']] },
+  office:  { l: 'Услуги',   f: [['office', 'lawyer|accountant|estate_agent|insurance|architect|company'], ['shop', 'laundry|dry_cleaning|copyshop|travel_agency']] },
+  stay:    { l: 'Жильё',    f: [['tourism', 'hotel|guest_house|hostel|motel|apartment']] }
+};
+const TIERS = {
+  email:  { l: 'Есть email',      c: '#18A058' },
+  phone:  { l: 'Только телефон',  c: '#2F7DF6' },
+  social: { l: 'Только соцсети',  c: '#9B51E0' },
+  none:   { l: 'Нет контактов',   c: '#E0A21B' }
+};
+const STATUSES = ['новый', 'написал', 'ответил', 'клиент', 'не интересно'];
+const RING = { 'новый': '#ffffff', 'написал': '#12262B', 'ответил': '#FF7A00', 'клиент': '#FFD400', 'не интересно': '#ffffff' };
+const ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+const NO_SITE = '[!"website"][!"contact:website"][!"url"][!"contact:url"]';
+const CONTACT = {
+  reach: '[~"^(phone|contact:phone|mobile|contact:mobile|email|contact:email)$"~"."]',
+  email: '[~"^(email|contact:email)$"~"."]',
+  any: ''
+};
+const MAX_KM2 = 5000;
+const DEF_TPL = {
+  sub: 'Website for {name}',
+  body: 'Hi {name} team,\n\nI was looking at {category} businesses in {city} and noticed {name} doesn\'t seem to have a website yet. A simple, fast site with your hours, photos, menu/services and a contact button helps new customers find you on Google and Maps.\n\nI build sites like this for local businesses. Would you be open to a quick chat or a free mock-up?\n\nBest regards,\n'
+};
+
+// ---------- хранилище (localStorage может быть недоступен) ----------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } }
+};
+let data = store.get('lf-data', null);
+if (!data) { // миграция со старой версии
+  data = {};
+  const old = store.get('lf-status', {});
+  for (const [id, s] of Object.entries(old)) data[id] = { s };
+}
+const saveData = () => store.set('lf-data', data);
+const rec = id => data[id] || (data[id] = {});
+let prefs = store.get('lf-prefs', {});
+const savePrefs = () => store.set('lf-prefs', prefs);
+let tpl = store.get('lf-tpl', DEF_TPL);
+
+// ---------- состояние ----------
+let leads = [], busy = false, lastPlace = '', activeId = null;
+let place = null, job = null, renderAnim = false; // place — найденное сверху место; job — текущий поиск (для отмены)
+const view = { tiers: new Set(Object.keys(TIERS)), status: 'all', fav: false };
+
+const isMobile = () => matchMedia('(max-width:820px)').matches;
+if (!isMobile()) document.body.classList.add('res-open');
+
+// ---------- карта ----------
+const map = L.map('map', { zoomControl: true }).setView([39.8, -98.6], 4);
+const base = {
+  'Улицы (Esri)': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri, HERE, Garmin, OpenStreetMap contributors' }),
+  'Спутник': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' })
+};
+base['Улицы (Esri)'].addTo(map);
+L.control.layers(base, null, { position: 'topright', collapsed: true }).addTo(map);
+L.control.scale({ imperial: false }).addTo(map);
+
+const drawn = new L.FeatureGroup().addTo(map);
+const shape = { shapeOptions: { color: '#0E7C6B', weight: 2 } };
+map.addControl(new L.Control.Draw({
+  draw: { polygon: { allowIntersection: false, ...shape }, rectangle: shape, polyline: false, circle: false, marker: false, circlemarker: false },
+  edit: { featureGroup: drawn, remove: true }
+}));
+map.on(L.Draw.Event.CREATED, e => { drawn.clearLayers(); drawn.addLayer(e.layer); updateGo(); });
+map.on(L.Draw.Event.DELETED, () => updateGo());
+
+const cluster = L.markerClusterGroup({
+  showCoverageOnHover: false, maxClusterRadius: 42, disableClusteringAtZoom: 16, chunkedLoading: true,
+  iconCreateFunction: c => {
+    const n = c.getChildCount(), s = n < 10 ? 34 : n < 100 ? 40 : 48;
+    return L.divIcon({ html: `<div class="cl" style="width:${s}px;height:${s}px">${n}</div>`, className: '', iconSize: [s, s] });
+  }
+}).addTo(map);
+
+// легенда-фильтр
+let legendOpen = prefs.legend ?? !matchMedia('(max-width:820px)').matches;
+const legendEl = h('div', { class: 'legend' });
+const Legend = L.Control.extend({ options: { position: 'bottomleft' }, onAdd() { L.DomEvent.disableClickPropagation(legendEl); return legendEl; } });
+new Legend().addTo(map);
+function drawLegend() {
+  const counts = tierCounts();
+  const toggle = h('button', {
+    class: 'lg-toggle', type: 'button', 'aria-expanded': String(legendOpen),
+    onclick: () => { legendOpen = !legendOpen; prefs.legend = legendOpen; savePrefs(); drawLegend(); }
+  }, legendOpen ? 'Легенда ✕' : '● Легенда');
+  legendEl.classList.toggle('closed', !legendOpen);
+  if (!legendOpen) { legendEl.replaceChildren(toggle); return; }
+  legendEl.replaceChildren(
+    toggle,
+    h('h4', {}, 'Цвет точки — тип контакта'),
+    ...Object.entries(TIERS).map(([k, t]) => {
+      const cb = h('input', { type: 'checkbox', onchange: e => toggleTier(k, e.target.checked) });
+      cb.checked = view.tiers.has(k);
+      return h('label', { style: '--c:' + t.c }, cb, h('i'), `${t.l} (${counts[k]})`);
+    }),
+    h('hr'),
+    h('h4', {}, 'Обводка — статус'),
+    h('div', { class: 'ring' }, ...[['новый', 'новый'], ['написал', 'написал'], ['ответил', 'ответил'], ['клиент', 'клиент']].map(([s, t]) => h('span', { style: '--rc:' + RING[s] }, h('i'), t)))
+  );
+}
+
+// ---------- UI ----------
+function toast(t) {
+  const el = $('#toast'); el.textContent = t; el.classList.add('on');
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 1800);
+}
+const setStat = (t, err = false) => {
+  const s = $('#stat'); s.textContent = t; s.classList.toggle('err', err);
+  clearTimeout(setStat.t);
+  if (t) setStat.t = setTimeout(() => { if (!busy && s.textContent === t) s.textContent = ''; }, err ? 9000 : 12000);
+};
+const setBusy = b => { busy = b; document.querySelectorAll('#go,#goHere').forEach(x => x.disabled = b); $('#bar').classList.toggle('on', b); document.body.classList.toggle('busy', b); if (b) $('#goLabel').textContent = 'Ищу…'; updateGo(); };
+async function copy(text, msg) {
+  try { await navigator.clipboard.writeText(text); toast(msg || 'Скопировано'); }
+  catch { const t = h('textarea', {}); t.value = text; document.body.append(t); t.select(); try { document.execCommand('copy'); toast(msg || 'Скопировано'); } catch { toast('Не удалось скопировать'); } t.remove(); }
+}
+
+// категории и настройки
+const savedCats = prefs.cats || ['food', 'beauty', 'auto', 'health', 'retail', 'craft'];
+for (const [k, c] of Object.entries(CATS)) {
+  const cb = h('input', { type: 'checkbox', value: k });
+  cb.checked = savedCats.includes(k);
+  cb.addEventListener('change', persistPrefs);
+  $('#cats').append(h('label', {}, cb, c.l));
+}
+$('#catAll').onclick = () => { document.querySelectorAll('#cats input').forEach(i => i.checked = true); persistPrefs(); };
+$('#catNone').onclick = () => { document.querySelectorAll('#cats input').forEach(i => i.checked = false); persistPrefs(); };
+function persistPrefs() {
+  prefs = { cats: [...document.querySelectorAll('#cats input:checked')].map(i => i.value), contact: $('#contact').value, limit: $('#limit').value, noSocial: $('#noSocial').checked, q: $('#q').value, theme: prefs.theme, legend: legendOpen };
+  savePrefs();
+}
+if (prefs.contact) $('#contact').value = prefs.contact;
+if (prefs.limit) $('#limit').value = prefs.limit;
+$('#noSocial').checked = !!prefs.noSocial;
+if (prefs.q) $('#q').value = prefs.q;
+['#contact', '#limit', '#noSocial'].forEach(s => $(s).addEventListener('change', persistPrefs));
+
+// тема
+const applyTheme = t => { document.documentElement.dataset.theme = t; };
+applyTheme(prefs.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+$('#theme').onclick = () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; applyTheme(t); prefs.theme = t; savePrefs(); };
+
+// фильтры статуса
+$('#stf').append(h('option', { value: 'all' }, 'Все статусы'), h('option', { value: 'active' }, 'Без «не интересно»'), ...STATUSES.map(s => h('option', { value: s }, s)));
+$('#stf').onchange = e => { view.status = e.target.value; render(); };
+$('#sort').onchange = render;
+$('#flt').addEventListener('input', render);
+$('#favOnly').onclick = e => { view.fav = !view.fav; e.currentTarget.setAttribute('aria-pressed', view.fav); e.currentTarget.style.color = view.fav ? 'var(--acc2)' : ''; render(); };
+
+function toggleTier(k, on) { on ? view.tiers.add(k) : view.tiers.delete(k); render(); }
+function drawTierChips() {
+  const counts = tierCounts();
+  $('#tiers').replaceChildren(...Object.entries(TIERS).map(([k, t]) =>
+    h('button', { class: 'tier', style: '--c:' + t.c, 'aria-pressed': String(view.tiers.has(k)), onclick: () => toggleTier(k, !view.tiers.has(k)) }, h('i'), t.l + ' ', h('b', {}, counts[k]))));
+}
+const tierCounts = () => { const c = { email: 0, phone: 0, social: 0, none: 0 }; leads.forEach(l => c[l.tier]++); return c; };
+
+// ---------- области ----------
+const km2 = b => {
+  const lat = (b.getNorth() + b.getSouth()) / 2;
+  return Math.abs(b.getNorth() - b.getSouth()) * 111 * Math.abs(b.getEast() - b.getWest()) * 111 * Math.cos(lat * Math.PI / 180);
+};
+
+async function areaFromName(q, signal) {
+  const res = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en&q=' + encodeURIComponent(q), { signal });
+  if (!res.ok) throw new Error('Геокодер недоступен (' + res.status + '). Попробуйте позже.');
+  const r = await res.json();
+  if (!r.length) throw new Error('Место не найдено: «' + q + '». Попробуйте «город, штат» по-английски.');
+  const [s, n, w, e] = r[0].boundingbox.map(Number);
+  const bounds = L.latLngBounds([s, w], [n, e]);
+  lastPlace = (r[0].name || q).trim();
+  if (r[0].osm_type === 'relation') return { pre: `area(${3600000000 + Number(r[0].osm_id)})->.a;`, flt: '(area.a)', bounds };
+  return { pre: '', flt: `(${s},${w},${n},${e})`, bounds };
+}
+
+// пока карта показывает найденное сверху место, ищем по его настоящим границам
+function placeActive() {
+  if (!place || drawn.getLayers().length) return false;
+  const v = map.getBounds(), pb = place.area.bounds;
+  return v.contains(pb) && km2(v) < 4 * Math.max(km2(pb), 50);
+}
+function areaSmart() {
+  if (placeActive()) { lastPlace = place.name; return { ...place.area, keepView: true }; }
+  return areaFromMap();
+}
+
+function areaFromMap() {
+  lastPlace = '';
+  const layer = drawn.getLayers()[0];
+  if (layer) {
+    if (layer.getLatLngs) {
+      const ring = layer.getLatLngs()[0];
+      const poly = ring.map(p => `${p.lat.toFixed(5)} ${p.lng.toFixed(5)}`).join(' ');
+      return { pre: '', flt: `(poly:"${poly}")`, bounds: layer.getBounds(), keepView: true };
+    }
+  }
+  const b = map.getBounds();
+  return { pre: '', flt: `(${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()})`, bounds: b, keepView: true };
+}
+
+// ---------- Overpass ----------
+function buildQuery(area, cats, limit, contact) {
+  const parts = [];
+  for (const c of cats) for (const [k, v] of CATS[c].f) parts.push(`nwr["${k}"~"^(${v})$"]["name"]${NO_SITE}${CONTACT[contact]}${area.flt};`);
+  return `[out:json][timeout:90];${area.pre}(${parts.join('')});out center tags ${limit};`;
+}
+
+async function overpass(query, signal) {
+  const aborted = () => new DOMException('Aborted', 'AbortError');
+  let lastErr;
+  for (const url of ENDPOINTS) {
+    if (signal && signal.aborted) throw aborted();
+    const ctrl = new AbortController();
+    const onAbort = () => ctrl.abort();
+    if (signal) signal.addEventListener('abort', onAbort);
+    const t = setTimeout(() => ctrl.abort(), 100000);
+    try {
+      const res = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(query), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const j = await res.json();
+      return j.elements || [];
+    } catch (e) {
+      if (signal && signal.aborted) throw aborted();
+      lastErr = e;
+    } finally { clearTimeout(t); if (signal) signal.removeEventListener('abort', onAbort); }
+  }
+  throw new Error('Сервер данных не ответил (' + (lastErr?.message || 'ошибка') + '). Уменьшите область или повторите через минуту.');
+}
+
+// ---------- разбор ----------
+const first = (t, ...keys) => { for (const k of keys) if (t[k]) return String(t[k]).trim(); return ''; };
+const httpUrl = v => (/^https?:\/\//i.test(v) ? v : '');
+const social = (v, host) => {
+  if (!v) return '';
+  if (httpUrl(v)) return v;
+  const handle = v.replace(/^@/, '').trim();
+  return /^[\w.\-]+$/.test(handle) ? `https://${host}/${handle}` : '';
+};
+
+function parse(els, cats) {
+  const seen = new Set(), out = [];
+  for (const e of els) {
+    const t = e.tags || {};
+    const c = e.center || e;
+    const id = e.type[0] + e.id;
+    if (!t.name || seen.has(id) || c.lat == null) continue;
+    seen.add(id);
+    const cat = cats.find(k => CATS[k].f.some(([key, v]) => new RegExp(`^(${v})$`).test(t[key] || '')));
+    const sub = first(t, 'shop', 'amenity', 'craft', 'office', 'tourism', 'leisure').replace(/_/g, ' ');
+    const numFirst = c.lon < -30 || ['GB', 'IE', 'AU', 'NZ'].includes(t['addr:country']);
+    const street = [t['addr:housenumber'], t['addr:street']];
+    const line = (numFirst ? street : street.reverse()).filter(Boolean).join(' ');
+    const city = t['addr:city'] || t['addr:suburb'] || '';
+    const l = {
+      id, name: t.name, cat: cat ? CATS[cat].l : '', sub, lat: c.lat, lon: c.lon, city,
+      addr: [line, city, t['addr:state'], t['addr:postcode']].filter(Boolean).join(', '),
+      phone: first(t, 'phone', 'contact:phone', 'mobile', 'contact:mobile').split(';')[0].trim(),
+      email: first(t, 'email', 'contact:email').split(';')[0].trim(),
+      fb: social(first(t, 'contact:facebook', 'facebook'), 'facebook.com'),
+      ig: social(first(t, 'contact:instagram', 'instagram'), 'instagram.com')
+    };
+    const nums = new Set(['phone', 'contact:phone', 'mobile', 'contact:mobile'].flatMap(k => (t[k] || '').split(';')).map(x => x.replace(/[^\d+]/g, '')).filter(Boolean));
+    l.tier = l.email ? 'email' : l.phone ? 'phone' : (l.fb || l.ig) ? 'social' : 'none';
+    // чем больше контактной информации, тем выше оценка (макс. ≈16)
+    l.score = (l.email ? 4 : 0) + (l.phone ? 3 : 0) + (l.email && l.phone ? 2 : 0)
+      + Math.min(Math.max(nums.size - 1, 0), 2) * 0.5
+      + (l.fb ? 1.5 : 0) + (l.ig ? 1.5 : 0) + (first(t, 'contact:whatsapp', 'whatsapp') ? 1 : 0)
+      + (l.addr ? 1 : 0) + (t.opening_hours ? 0.5 : 0) + (t.description ? 0.5 : 0);
+    l.heat = l.score >= 9 ? 3 : l.score >= 6 ? 2 : l.score >= 3 ? 1 : 0;
+    out.push(l);
+  }
+  return out;
+}
+
+const statusOf = l => (data[l.id] && data[l.id].s) || 'новый';
+
+// ---------- письмо ----------
+function composeUrl(l) {
+  const fill = s => s.replace(/\{name\}/g, l.name).replace(/\{category\}/g, (l.sub || l.cat || 'local').toLowerCase()).replace(/\{city\}/g, l.city || lastPlace || 'your area');
+  return 'mailto:' + encodeURI(l.email) + '?subject=' + encodeURIComponent(fill(tpl.sub)) + '&body=' + encodeURIComponent(fill(tpl.body));
+}
+$('#tpl').onclick = () => { $('#tSub').value = tpl.sub; $('#tBody').value = tpl.body; $('#tplDlg').showModal(); };
+$('#tSave').onclick = () => { tpl = { sub: $('#tSub').value, body: $('#tBody').value }; store.set('lf-tpl', tpl); $('#tplDlg').close(); toast('Шаблон сохранён'); };
+$('#tReset').onclick = () => { $('#tSub').value = DEF_TPL.sub; $('#tBody').value = DEF_TPL.body; };
+$('#tplDlg').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+
+// ---------- отображение ----------
+const dist = l => { const c = map.getCenter(); return map.distance(c, [l.lat, l.lon]); };
+function visible() {
+  const f = $('#flt').value.trim().toLowerCase();
+  const sort = $('#sort').value;
+  let list = leads.filter(l => {
+    if (!view.tiers.has(l.tier)) return false;
+    const st = statusOf(l);
+    if (view.status === 'active' && st === 'не интересно') return false;
+    if (!['all', 'active'].includes(view.status) && st !== view.status) return false;
+    if (view.fav && !(data[l.id] && data[l.id].f)) return false;
+    return !f || [l.name, l.addr, l.sub, l.cat].join(' ').toLowerCase().includes(f);
+  });
+  if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name));
+  else if (sort === 'dist') { const c = map.getCenter(); list.forEach(l => l._d = map.distance(c, [l.lat, l.lon])); list.sort((a, b) => a._d - b._d); }
+  else if (sort === 'status') list.sort((a, b) => STATUSES.indexOf(statusOf(a)) - STATUSES.indexOf(statusOf(b)) || b.score - a.score);
+  else list.sort((a, b) => b.score - a.score || ((data[b.id]?.f ? 1 : 0) - (data[a.id]?.f ? 1 : 0)));
+  return list;
+}
+
+function pill(label, href, extra = {}) {
+  return h('a', { class: 'pill', href, onclick: e => e.stopPropagation(), ...extra }, h('span', {}, label));
+}
+function copyBtn(text, msg) {
+  return h('button', { class: 'pill cp', type: 'button', title: 'Копировать', 'aria-label': 'Копировать', onclick: e => { e.stopPropagation(); copy(text, msg); } }, '⧉');
+}
+
+function card(l, i = 0, anim = false) {
+  const st = statusOf(l), r = data[l.id] || {};
+  const q = encodeURIComponent([l.name, l.addr].filter(Boolean).join(' '));
+  const digits = l.phone.replace(/[^\d+]/g, '');
+  const contacts = [];
+  if (l.email) contacts.push(pill('✉ ' + l.email, 'mailto:' + encodeURI(l.email)), copyBtn(l.email, 'Email скопирован'));
+  if (l.phone) {
+    contacts.push(pill('☎ ' + l.phone, 'tel:' + digits), copyBtn(l.phone, 'Телефон скопирован'));
+    if (digits.startsWith('+')) contacts.push(pill('WhatsApp', 'https://wa.me/' + digits.slice(1), { target: '_blank', rel: 'noopener' }));
+  }
+  if (l.fb) contacts.push(pill('Facebook', l.fb, { target: '_blank', rel: 'noopener' }));
+  if (l.ig) contacts.push(pill('Instagram', l.ig, { target: '_blank', rel: 'noopener' }));
+  if (l.email) contacts.push(h('a', { class: 'pill cta', href: composeUrl(l), onclick: e => { e.stopPropagation(); if (statusOf(l) === 'новый') setStatus(l, 'написал'); } }, h('span', {}, 'Написать')));
+
+  const sel = h('select', {
+    'aria-label': 'Статус', class: 'st-' + st.replace(' ', '-'),
+    onclick: e => e.stopPropagation(),
+    onchange: e => setStatus(l, e.target.value)
+  }, ...STATUSES.map(s => h('option', { value: s, selected: s === st }, s)));
+
+  const note = h('textarea', { class: 'note', placeholder: 'Заметка: кому писали, что ответили…', onclick: e => e.stopPropagation(), oninput: e => { rec(l.id).n = e.target.value; saveData(); } });
+  note.value = r.n || '';
+  if (!r.n) note.hidden = true;
+  const noteBtn = h('a', { href: '#', onclick: e => { e.preventDefault(); e.stopPropagation(); note.hidden = !note.hidden; if (!note.hidden) note.focus(); } }, r.n ? '✎ Заметка' : '+ Заметка');
+
+  return h('article', {
+    class: `lead t-${l.tier}${st === 'не интересно' ? ' dead' : ''}${activeId === l.id ? ' active' : ''}${anim ? ' enter' : ''}`, 'data-id': l.id, tabindex: '0', style: '--i:' + Math.min(i, 14),
+    onclick: () => focusLead(l), onkeydown: e => { if (e.key === 'Enter' && e.target === e.currentTarget) focusLead(l); },
+    onmouseenter: () => l.m && l.m.setStyle({ radius: 11 }), onmouseleave: () => l.m && l.m.setStyle(markerStyle(l))
+  },
+    h('div', { class: 'lh' },
+      h('b', {}, l.name),
+      l.heat ? h('span', { class: 'heat h' + l.heat, title: 'Вкусность: ' + l.heat + ' из 3 (оценка ' + l.score + ')' }, '🔥'.repeat(l.heat)) : null,
+      h('span', { class: 'badge' }, TIERS[l.tier].l),
+      h('button', { class: 'star' + (r.f ? ' on' : ''), type: 'button', 'aria-label': 'Избранное', onclick: e => { e.stopPropagation(); rec(l.id).f = !r.f; saveData(); render(); } }, r.f ? '★' : '☆')),
+    h('div', { class: 'sub' }, [l.cat, l.sub].filter(Boolean).join(' · ')),
+    h('div', { class: 'addr' }, l.addr || 'Адрес не указан в OSM'),
+    contacts.length ? h('div', { class: 'ct' }, ...contacts) : null,
+    h('div', { class: 'acts' },
+      h('a', { href: 'https://www.google.com/search?q=' + q + '+website', target: '_blank', rel: 'noopener', onclick: e => e.stopPropagation() }, 'Google (есть сайт?)'),
+      h('a', { href: 'https://www.google.com/maps/search/?api=1&query=' + q, target: '_blank', rel: 'noopener', onclick: e => e.stopPropagation() }, 'Maps'),
+      noteBtn, sel),
+    note);
+}
+
+function setStatus(l, s) {
+  rec(l.id).s = s; saveData();
+  const box = $('#list'), y = box.scrollTop;
+  render(); box.scrollTop = y;
+}
+
+function markerStyle(l) {
+  const st = statusOf(l), dead = st === 'не интересно', fav = data[l.id] && data[l.id].f;
+  return {
+    radius: (fav ? 10 : 8) + (l.heat === 3 ? 2 : 0), weight: st === 'новый' || dead ? 2.5 : 4, color: fav && st === 'новый' ? '#FFD400' : RING[st],
+    fillColor: TIERS[l.tier].c, fillOpacity: dead ? .3 : .95, opacity: dead ? .5 : 1
+  };
+}
+
+function popup(l) {
+  const q = encodeURIComponent([l.name, l.addr].filter(Boolean).join(' '));
+  return h('div', { class: 'pop' },
+    h('b', {}, l.name),
+    h('div', {}, [l.cat, l.sub].filter(Boolean).join(' · ')),
+    h('div', {}, l.addr || ''),
+    l.phone ? h('div', {}, h('a', { href: 'tel:' + l.phone.replace(/[^\d+]/g, '') }, '☎ ' + l.phone)) : null,
+    l.email ? h('div', {}, h('a', { href: 'mailto:' + encodeURI(l.email) }, '✉ ' + l.email), h('a', { href: composeUrl(l) }, 'Написать')) : null,
+    h('div', {}, h('a', { href: 'https://www.google.com/search?q=' + q + '+website', target: '_blank', rel: 'noopener' }, 'Проверить сайт в Google'))
+  );
+}
+
+function focusLead(l) {
+  if (isMobile()) setRes(false);
+  activeId = l.id;
+  document.querySelectorAll('.lead.active').forEach(x => x.classList.remove('active'));
+  const el = document.querySelector(`.lead[data-id="${l.id}"]`);
+  if (el) el.classList.add('active');
+  if (l.m) {
+    if (cluster.hasLayer(l.m)) cluster.zoomToShowLayer(l.m, () => { map.panTo([l.lat, l.lon]); l.m.openPopup(); });
+  } else map.setView([l.lat, l.lon], Math.max(map.getZoom(), 17));
+}
+
+function render() {
+  const list = visible();
+  cluster.clearLayers();
+  const box = $('#list');
+  box.replaceChildren();
+  if (!list.length) {
+    box.append(h('div', { class: 'empty' }, h('big', {}, leads.length ? '🔎' : '🗺️'),
+      leads.length ? 'Ничего не подошло под фильтры.' : 'Пока пусто. Расширьте область, добавьте категории или выберите «Любые» в поле «Контакты».'));
+  }
+  const markers = [];
+  const anim = renderAnim; renderAnim = false;
+  let idx = 0;
+  for (const l of list) {
+    l.m = L.circleMarker([l.lat, l.lon], { ...markerStyle(l), className: anim ? 'pt enter' : '' }).bindPopup(() => popup(l), { maxWidth: 300 });
+    if (anim) {
+      l.m.on('add', () => { const el = l.m.getElement && l.m.getElement(); if (el) el.style.animationDelay = (Math.random() * 0.5) + 's'; });
+      setTimeout(() => { l.m.options.className = ''; }, 1600);
+    }
+    l.m.on('click', () => {
+      activeId = l.id;
+      document.querySelectorAll('.lead.active').forEach(x => x.classList.remove('active'));
+      const el = document.querySelector(`.lead[data-id="${l.id}"]`);
+      if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    });
+    markers.push(l.m);
+    box.append(card(l, idx++, anim));
+  }
+  cluster.addLayers(markers);
+  drawTierChips(); drawLegend();
+  const rc = $('#resCount');
+  if (rc.textContent !== String(leads.length)) { rc.textContent = leads.length; rc.classList.remove('bump'); void rc.offsetWidth; rc.classList.add('bump'); }
+  const worked = leads.filter(l => statusOf(l) !== 'новый').length;
+  const clients = leads.filter(l => statusOf(l) === 'клиент').length;
+  $('#count').textContent = leads.length ? `Показано ${list.length} из ${leads.length}` : '';
+  $('#funnel').textContent = leads.length ? `в работе ${worked} · клиентов ${clients}` : '';
+}
+
+// ---------- поиск ----------
+async function search(getArea) {
+  if (busy) return;
+  const cats = [...document.querySelectorAll('#cats input:checked')].map(i => i.value);
+  if (!cats.length) { openDrawer(); return setStat('Выберите хотя бы одну категорию в настройках.', true); }
+  persistPrefs();
+  if (isMobile()) setRes(false);
+  job = new AbortController();
+  const sig = job.signal;
+  setBusy(true);
+  setStat('Готовлю область…');
+  try {
+    const area = await getArea(sig);
+    if (km2(area.bounds) > MAX_KM2 && !confirm('Область очень большая (>' + MAX_KM2 + ' км²), запрос может не уложиться во время. Продолжить?')) { setStat('Отменено.'); return; }
+    if (!area.keepView) map.fitBounds(area.bounds);
+    setStat('Загружаю бизнесы…');
+    const els = await overpass(buildQuery(area, cats, Number($('#limit').value), $('#contact').value), sig);
+    leads = parse(els, cats).filter(l => !($('#noSocial').checked && (l.fb || l.ig)));
+    activeId = null;
+    $('#sort').value = 'score';
+    renderAnim = true;
+    render();
+    if (!leads.length) { setStat('Ничего не найдено.'); return; }
+    setRes(true);
+    const c = tierCounts();
+    setStat(`Найдено ${leads.length} (🔥 ${leads.filter(l => l.heat === 3).length}): email ${c.email}, телефон ${c.phone}, соцсети ${c.social}, без контактов ${c.none}.`);
+    $('#list').scrollTop = 0;
+  } catch (e) {
+    if (e.name === 'AbortError' || sig.aborted) setStat('Поиск отменён.');
+    else setStat(e.message || 'Неизвестная ошибка', true);
+  } finally { job = null; setBusy(false); }
+}
+
+// верхняя строка только находит место и показывает его; сам поиск запускает кнопка внизу
+$('#go').onclick = async () => {
+  if (busy) return;
+  const q = $('#q').value.trim();
+  if (!q) return setStat('Введите город, штат или страну.', true);
+  persistPrefs();
+  job = new AbortController();
+  const sig = job.signal;
+  setBusy(true);
+  setStat('Ищу место…');
+  try {
+    const area = await areaFromName(q, sig);
+    place = { area, name: lastPlace };
+    drawn.clearLayers();
+    map.fitBounds(area.bounds);
+    setStat('Место найдено. Нажмите кнопку внизу, чтобы искать здесь.');
+  } catch (e) {
+    if (e.name === 'AbortError' || sig.aborted) setStat('Отменено.');
+    else setStat(e.message || 'Не удалось найти место', true);
+  } finally { job = null; setBusy(false); }
+};
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') $('#go').click(); });
+$('#goHere').onclick = () => search(async () => areaSmart());
+$('#cancel').onclick = () => { if (job) job.abort(); };
+$('#clr').onclick = () => { drawn.clearLayers(); cluster.clearLayers(); leads = []; activeId = null; render(); setStat(''); updateGo(); setDrawer(false); toast('Сброшено'); };
+
+// ---------- экспорт ----------
+const cell = v => { v = String(v ?? ''); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
+$('#csv').onclick = () => {
+  const list = visible();
+  if (!list.length) return setStat('Нечего экспортировать.', true);
+  const rows = [['Название', 'Категория', 'Тип', 'Адрес', 'Телефон', 'Email', 'Facebook', 'Instagram', 'Тип контакта', 'Широта', 'Долгота', 'Статус', 'Заметка', 'Избранное', 'Оценка']]
+    .concat(list.map(l => [l.name, l.cat, l.sub, l.addr, l.phone, l.email, l.fb, l.ig, TIERS[l.tier].l, l.lat, l.lon, statusOf(l), (data[l.id] || {}).n || '', (data[l.id] || {}).f ? 'да' : '', l.score]));
+  const blob = new Blob(['\ufeff' + rows.map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = h('a', { href: URL.createObjectURL(blob), download: 'leads-' + new Date().toISOString().slice(0, 10) + '.csv' });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast('CSV: ' + list.length + ' строк');
+};
+$('#cpEmails').onclick = () => {
+  const e = [...new Set(visible().map(l => l.email).filter(Boolean))];
+  e.length ? copy(e.join(', '), 'Email: ' + e.length) : toast('Нет email в текущем списке');
+};
+$('#cpPhones').onclick = () => {
+  const p = [...new Set(visible().map(l => l.phone).filter(Boolean))];
+  p.length ? copy(p.join('\n'), 'Телефонов: ' + p.length) : toast('Нет телефонов в текущем списке');
+};
+
+// при перемещении карты — пересчёт сортировки «ближе к центру»
+let mv; map.on('moveend', () => { if ($('#sort').value === 'dist' && leads.length) { clearTimeout(mv); mv = setTimeout(() => { const y = $('#list').scrollTop; render(); $('#list').scrollTop = y; }, 400); } });
+
+// ---------- панели ----------
+function setRes(on) {
+  document.body.classList.toggle('res-open', on);
+  setTimeout(() => map.invalidateSize(), 260);
+}
+function setDrawer(on) {
+  document.body.classList.toggle('drawer-open', on);
+  $('#drawer').inert = !on;
+  $('#menu').setAttribute('aria-expanded', String(on));
+  if (on) $('#menuClose').focus(); else if (document.activeElement && $('#drawer').contains(document.activeElement)) $('#menu').focus();
+}
+const openDrawer = () => setDrawer(true);
+$('#menu').onclick = () => setDrawer(!document.body.classList.contains('drawer-open'));
+$('#menuClose').onclick = $('#menuDone').onclick = $('#scrim').onclick = () => setDrawer(false);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('drawer-open')) setDrawer(false); });
+$('#resBtn').onclick = () => setRes(!document.body.classList.contains('res-open'));
+$('#resClose').onclick = () => setRes(false);
+$('#zoneClr').onclick = () => { drawn.clearLayers(); updateGo(); toast('Зона убрана'); };
+
+// кнопка внизу: «в этой местности» или «в зоне»
+function updateGo() {
+  const zone = drawn.getLayers().length > 0;
+  if (!busy) $('#goLabel').textContent = zone ? 'Искать в зоне' : placeActive() ? 'Искать: ' + place.name : 'Искать в этой местности';
+  $('#zoneClr').hidden = !zone || busy;
+  $('#cancel').hidden = !busy;
+}
+updateGo();
+map.on('moveend', updateGo);
+setTimeout(() => map.invalidateSize(), 300);
+
+drawTierChips(); drawLegend();
+</script>
+</body>
+</html>
